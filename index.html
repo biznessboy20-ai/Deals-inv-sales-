@@ -1,0 +1,1157 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Inventory & Sales — PWA</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#121938">
+  <style>
+    :root { --bg:#0b1020; --card:#121938; --muted:#7c8db5; --text:#e7ecff; --accent:#69d094; --warn:#ffd166; --danger:#ff6b6b; --blue:#7db4ff; --orange:#ffb86b;}
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:linear-gradient(180deg,#0b1020,#0a0d1a); color:var(--text); }
+    header { padding:12px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #1f2a4d; position:sticky; top:0; background:rgba(11,16,32,.85); backdrop-filter:saturate(1.2) blur(6px); z-index:10;}
+    header h1 { font-size:18px; margin:0; letter-spacing:.5px; }
+    header nav { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+    .tab { padding:8px 12px; border:1px solid #2a3562; background:#141c3a; color:#cfe1ff; border-radius:10px; cursor:pointer; }
+    .tab.active { background:#1b254a; border-color:#3953a3; }
+    #btn-install { margin-left:8px; display:none; }
+    main { padding:16px; max-width:1200px; margin: 0 auto; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; }
+    .card { background:var(--card); border:1px solid #1f2a4d; border-radius:14px; padding:16px; box-shadow:0 2px 12px rgba(0,0,0,.25); }
+    .card h2 { margin:0 0 10px; font-size:16px; }
+    label { font-size:12px; color:#c4d1ff; display:block; margin-bottom:6px; }
+    input, select { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #2a3562; background:#0e1430; color:#e7ecff; }
+    input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:0; }
+    button { padding:10px 12px; border-radius:10px; border:1px solid #2a3562; background:#182045; color:#fff; cursor:pointer; }
+    button.primary{ background:#214a37; border-color:#2c7a51; }
+    button.warn{ background:#3a2e15; border-color:#84621b; color:#ffd166; }
+    button.danger{ background:#3a1822; border-color:#8a2b3f; color:#ffb3be; }
+    button.ghost{ background:transparent; border-color:#2a3562; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #1f2a4d; padding:10px; text-align:left; font-size:13px; vertical-align:top; }
+    th { color:#a9baf0; font-weight:600; }
+    .pill { padding:3px 8px; border-radius:999px; font-size:12px; display:inline-block; }
+    .ok{ background:#133523; color:#8de0b0; border:1px solid #2a6b49; }
+    .age60{ background:#2b2b12; color:#ffd166; border:1px solid #7a6a2a; }
+    .age120{ background:#331b12; color:#ffae8f; border:1px solid #7a3a2a; }
+    .age180{ background:#3a141f; color:#ff99a6; border:1px solid #8a2b3f; }
+    .muted { color: var(--muted); font-size:12px; }
+    .right { text-align:right; }
+
+    /* Scanner modal */
+    #scan-modal { position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; z-index:9999; }
+    #scan-card { background:#0b1020; border:1px solid #2a3562; border-radius:16px; width:min(640px,92vw); padding:12px; }
+    #scan-video { width:100%; border-radius:12px; background:#000; }
+    #scan-status { margin-top:6px; font-size:12px; color:#cfe1ff; }
+    #scan-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+    .highlight { outline:2px solid #69d094; outline-offset:2px; border-radius:6px; transition: outline-color .4s; }
+
+    /* KPIs */
+    .kpis { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:12px; }
+    .kpi { padding:12px; border-radius:12px; border:1px solid #2a3562; }
+    .kpi h3 { margin:0 0 6px; font-size:12px; color:#cfe1ff; }
+    .kpi .val { font-size:22px; font-weight:700; }
+    .kpi.good{ background:#132c21; }
+    .kpi.bad{ background:#30161a; }
+    .kpi.mid{ background:#2b2412; }
+
+    .errbar { position:fixed; left:0; right:0; bottom:0; background:#3a1822; color:#ffb3be; border-top:1px solid #8a2b3f; padding:8px 12px; font-size:12px; display:none; z-index:9998;}
+    .errbar code { background:#2a0f18; padding:2px 4px; border-radius:6px; }
+
+    @media (max-width: 980px){ .kpis{ grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Inventory & Sales — PWA</h1>
+    <nav>
+      <button class="tab active" id="tab-inv">Inventory</button>
+      <button class="tab" id="tab-sales">Sales</button>
+      <button class="tab" id="tab-exp">Expenses</button>
+      <button class="tab" id="tab-mile">Mileage</button>
+      <button class="tab" id="tab-reports">Reports</button>
+      <button class="tab" id="tab-settings">Settings</button>
+      <button id="btn-install" class="ghost">Install App</button>
+    </nav>
+  </header>
+
+  <div id="errbar" class="errbar"></div>
+
+  <!-- Scanner modal -->
+  <div id="scan-modal">
+    <div id="scan-card" class="card">
+      <h2>Scan Barcode</h2>
+      <video id="scan-video" playsinline></video>
+      <div id="scan-status" class="muted">Point your camera at a UPC/EAN/Code-128…</div>
+      <div id="scan-actions">
+        <button id="btn-scan-stop">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <section id="inv-view">
+      <div class="row">
+        <div class="card" style="flex:2 1 560px;">
+          <h2>Add / Edit Inventory Item</h2>
+          <div class="row" style="gap:8px; margin-bottom:8px;">
+            <button id="btn-scan" class="ghost">Scan Barcode</button>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+            <div>
+              <label>Item Description</label>
+              <input id="i-desc" placeholder="Exact listing title"/>
+            </div>
+            <div>
+              <label>Category</label>
+              <select id="i-cat"></select>
+            </div>
+            <div>
+              <label>Storage Location</label>
+              <input id="i-loc" placeholder="BIN A, Rack 2, etc."/>
+            </div>
+            <div>
+              <label>SKU (optional)</label>
+              <input id="i-sku" placeholder="Your SKU / Custom label"/>
+            </div>
+            <div>
+              <label>Cost of Goods ($)</label>
+              <input id="i-cogs" type="number" step="0.01" placeholder="0.00"/>
+            </div>
+            <div>
+              <label>Date Listed</label>
+              <input id="i-date" type="date"/>
+            </div>
+            <div>
+              <label>Quantity</label>
+              <input id="i-qty" type="number" step="1" value="1"/>
+            </div>
+            <div>
+              <label>60 Day Action</label>
+              <select id="i-act60"></select>
+            </div>
+            <div>
+              <label>120 Day Action</label>
+              <select id="i-act120"></select>
+            </div>
+            <div>
+              <label>>180 Day Action</label>
+              <select id="i-act180"></select>
+            </div>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="primary" id="btn-add">Save to Inventory</button>
+            <button id="btn-clear">Clear</button>
+            <button id="btn-exp-inv" class="ghost">Export Inventory CSV</button>
+          </div>
+          <p class="muted" style="margin-top:8px;">Days Active calculates from Date Listed. Use “Sell” to move an item to Sales.</p>
+        </div>
+
+        <div class="card" style="flex:3 1 640px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <h2>Inventory</h2>
+            <div>
+              <label for="ebayCsv" class="muted" style="display:block; margin-bottom:6px;">Import eBay Active Listings (CSV)</label>
+              <input type="file" id="ebayCsv" accept=".csv" />
+              <button class="ghost" id="btn-import-ebay" title="Parse and import CSV">Import CSV</button>
+            </div>
+          </div>
+          <table id="inv-table">
+            <thead>
+              <tr>
+                <th>Item</th><th>Cat</th><th>COGS</th><th>Date Listed</th><th>Days</th><th>Qty</th><th>Plan (60/120/180)</th><th class="right">Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="sales-view" style="display:none">
+      <div class="row">
+        <div class="card" style="flex:1 1 380px;">
+          <h2>Log a Sale (manual)</h2>
+          <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+            <div>
+              <label>Platform</label>
+              <select id="s-platform"></select>
+            </div>
+            <div>
+              <label>Approx. Fees %</label>
+              <input id="s-fee" type="number" step="0.1" value="12.9"/>
+            </div>
+            <div>
+              <label>Gross Sale ($)</label>
+              <input id="s-gross" type="number" step="0.01"/>
+            </div>
+            <div>
+              <label>Shipping Cost Paid by You ($)</label>
+              <input id="s-ship" type="number" step="0.01" value="0"/>
+            </div>
+            <div>
+              <label>Adjustments ($)</label>
+              <input id="s-adj" type="number" step="0.01" value="0"/>
+            </div>
+            <div>
+              <label>Return Charges ($)</label>
+              <input id="s-ret" type="number" step="0.01" value="0"/>
+            </div>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="primary" id="btn-manual-sale">Add Manual Sale</button>
+            <button id="btn-exp-sales" class="ghost">Export Sales CSV</button>
+          </div>
+          <p class="muted" style="margin-top:8px;">Use the “Sell” button in Inventory for automatic mapping, or log here for off-platform sales.</p>
+        </div>
+        <div class="card" style="flex:2 1 760px;">
+          <h2>Sales</h2>
+          <table id="sales-table">
+            <thead>
+              <tr>
+                <th>Item</th><th>Platform</th><th>Gross</th><th>Fees</th><th>Net</th><th>Adj</th><th>Adj Net</th><th class="right">Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="exp-view" style="display:none">
+      <div class="card">
+        <h2>Expenses</h2>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+          <div>
+            <label>Date</label>
+            <input id="e-date" type="date"/>
+          </div>
+          <div>
+            <label>Description</label>
+            <input id="e-desc" placeholder="Supplies, sourcing, postage…"/>
+          </div>
+          <div>
+            <label>Type</label>
+            <select id="e-type">
+              <option>Supplies</option><option>Inventory</option><option>Postage</option><option>Fees</option><option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label>Amount ($)</label>
+            <input id="e-amt" type="number" step="0.01"/>
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="primary" id="btn-exp">Add Expense</button>
+        </div>
+        <table id="exp-table" style="margin-top:12px;">
+          <thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="right">Amount</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="mile-view" style="display:none">
+      <div class="card">
+        <h2>Mileage</h2>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+          <div>
+            <label>Date</label>
+            <input id="m-date" type="date"/>
+          </div>
+          <div>
+            <label>Purpose</label>
+            <input id="m-purp" placeholder="Thrift run, post office…"/>
+          </div>
+          <div>
+            <label>Miles Driven</label>
+            <input id="m-miles" type="number" step="0.1"/>
+          </div>
+          <div>
+            <label>IRS Rate (2025)</label>
+            <input value="0.65" disabled />
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="primary" id="btn-mile">Add Mileage</button>
+        </div>
+        <table id="mile-table" style="margin-top:12px;">
+          <thead><tr><th>Date</th><th>Purpose</th><th>Miles</th><th class="right">Credit ($)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="reports-view" style="display:none">
+      <div class="kpis">
+        <div class="kpi" id="kpi-mtd"><h3>MTD Adjusted Profit</h3><div class="val" id="kpi-mtd-val">$0.00</div></div>
+        <div class="kpi" id="kpi-ytd"><h3>YTD Units Sold</h3><div class="val" id="kpi-ytd-val">0</div></div>
+        <div class="kpi" id="kpi-st"><h3>Sell-through</h3><div class="val" id="kpi-st-val">0%</div><div class="muted" id="kpi-st-note">Sold / (Sold + Current Inventory)</div></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h2>Monthly Sales Report</h2>
+          <button class="ghost" id="btn-exp-month">Export CSV</button>
+        </div>
+        <table id="rep-month">
+          <thead>
+            <tr>
+              <th>Month</th><th>Units</th><th>Gross</th><th>Fees</th><th>Ship</th><th>Adj</th><th>Returns</th><th>Net</th><th>Adj Net</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h2>Quarterly Sales Report</h2>
+          <button class="ghost" id="btn-exp-quarter">Export CSV</button>
+        </div>
+        <table id="rep-quarter">
+          <thead>
+            <tr>
+              <th>Quarter</th><th>Units</th><th>Gross</th><th>Fees</th><th>Ship</th><th>Adj</th><th>Returns</th><th>Net</th><th>Adj Net</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h2>Annual Sales Report</h2>
+          <button class="ghost" id="btn-exp-year">Export CSV</button>
+        </div>
+        <table id="rep-year">
+          <thead>
+            <tr>
+              <th>Year</th><th>Units</th><th>Gross</th><th>Fees</th><th>Ship</th><th>Adj</th><th>Returns</th><th>Net</th><th>Adj Net</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h2>Expense Report</h2>
+          <div>
+            <button class="ghost" id="btn-exp-exp-month">Export (By Month)</button>
+            <button class="ghost" id="btn-exp-exp-type">Export (By Type)</button>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+          <div>
+            <h3 class="muted" style="margin:0 0 8px;">By Month</h3>
+            <table id="rep-exp-month">
+              <thead><tr><th>Month</th><th class="right">Amount</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div>
+            <h3 class="muted" style="margin:0 0 8px;">By Type</h3>
+            <table id="rep-exp-type">
+              <thead><tr><th>Type</th><th class="right">Amount</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="settings-view" style="display:none">
+      <div class="card">
+        <h2>Settings</h2>
+        <p class="muted">Manage dropdowns, Import/Export, Backup/Restore, and PWA install.</p>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+          <div>
+            <label>Categories (comma separated)</label>
+            <input id="set-cats" />
+          </div>
+          <div>
+            <label>Platforms (comma separated)</label>
+            <input id="set-plats" />
+          </div>
+          <div>
+            <label>Actions (comma separated)</label>
+            <input id="set-acts" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:16px;">
+          <div class="card" style="flex:1 1 360px;">
+            <h2>Data Backup</h2>
+            <p class="muted">Export a JSON file containing Settings, Inventory, Sales, Expenses, Mileage. Import on another device to restore.</p>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0;">
+              <button class="primary" id="btn-export-json">Export All (JSON)</button>
+              <input type="file" id="dataJson" accept=".json" />
+              <button id="btn-import-json" title="Replace current data with JSON">Restore (Replace)</button>
+              <button id="btn-merge-json" class="ghost" title="Merge JSON into current data">Merge from JSON</button>
+            </div>
+            <p class="muted" id="backup-note"></p>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="primary" id="btn-save-settings">Save Settings</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+const $ = sel => document.querySelector(sel);
+const $$ = sel => document.querySelectorAll(sel);
+const LS = {
+  get(k, def){ try{ return JSON.parse(localStorage.getItem(k)) ?? def; }catch{ return def; } },
+  set(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+};
+
+// Error banner
+(function(){
+  const bar = document.getElementById('errbar');
+  window.addEventListener('error', (ev)=>{
+    bar.style.display = 'block';
+    bar.innerHTML = `Error: <code>${(ev.message||'')}</code> — see console for details.`;
+    console.error('[App Error]', ev.error || ev.message, ev.filename, ev.lineno, ev.colno);
+  });
+})();
+
+// ---- Data ----
+let settings = LS.get('settings', {
+  categories: ["Shoes","Clothing","Accessories","Electronics","Collectibles","Housewares","Books","Other"],
+  platforms: ["eBay","Poshmark","Mercari","Facebook Marketplace","Etsy","Whatnot","Other"],
+  actions: ["None","Price Drop","Promote Listing","Relist","End Listings"]
+});
+let inventory = LS.get('inventory', []);
+let sales = LS.get('sales', []);
+let expenses = LS.get('expenses', []);
+let mileage = LS.get('mileage', []);
+
+function persist(){
+  LS.set('settings', settings);
+  LS.set('inventory', inventory);
+  LS.set('sales', sales);
+  LS.set('expenses', expenses);
+  LS.set('mileage', mileage);
+  LS.set('lastBackupHint', new Date().toISOString());
+}
+
+// ---- Helpers ----
+const fmt = n => (Number(n)||0).toFixed(2);
+const today = () => new Date().toISOString().slice(0,10);
+function daysActive(dateListed){
+  if(!dateListed) return 0;
+  const ms = Date.now() - new Date(dateListed).getTime();
+  return Math.max(0, Math.floor(ms/86400000));
+}
+function pillForDays(d){
+  if(d >= 180) return `<span class="pill age180">${d}</span>`;
+  if(d >= 120) return `<span class="pill age120">${d}</span>`;
+  if(d >= 60)  return `<span class="pill age60">${d}</span>`;
+  return `<span class="pill ok">${d}</span>`;
+}
+function uid(prefix){ return prefix + Math.random().toString(36).slice(2,10); }
+function monthKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+// ---- CSV Helpers ----
+function toCSV(rows, headers){
+  const esc = v => {
+    const s = (v===null || v===undefined) ? '' : String(v);
+    return (/[\",\\n]/.test(s)) ? '\"' + s.replace(/\"/g,'\"\"') + '\"' : s;
+  };
+  const lines = [];
+  if(headers && headers.length){ lines.push(headers.map(esc).join(',')); }
+  rows.forEach(r => {
+    if(Array.isArray(r)) lines.push(r.map(esc).join(','));
+    else lines.push(headers.map(h=>esc(r[h])).join(','));
+  });
+  return lines.join('\\n');
+}
+function downloadFile(filename, data, mime){
+  const blob = new Blob([data], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Robust CSV parser
+function parseCSV(text){
+  const rows = [];
+  let row = [], val = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ val += '"'; i++; }
+        else { inQuotes = false; }
+      } else { val += c; }
+    } else {
+      if(c === '"'){ inQuotes = true; }
+      else if(c === ','){ row.push(val); val=''; }
+      else if(c === '\\n'){ row.push(val); rows.push(row); row=[]; val=''; }
+      else if(c === '\\r'){}
+      else { val += c; }
+    }
+  }
+  row.push(val); rows.push(row);
+  return rows;
+}
+
+// ---- Reports ----
+function groupSales(by='month'){
+  const agg = {};
+  sales.forEach(s => {
+    const d = s.dateSold ? new Date(s.dateSold) : new Date();
+    const y = d.getFullYear();
+    const m = d.getMonth()+1;
+    const monthKey = `${y}-${String(m).padStart(2,'0')}`;
+    const quarter = `Q${Math.floor((m-1)/3)+1} ${y}`;
+    const yearKey = `${y}`;
+    const key = by==='month' ? monthKey : by==='quarter' ? quarter : yearKey;
+    if(!agg[key]) agg[key] = { units:0, gross:0, fees:0, ship:0, adj:0, returns:0, net:0, adjNet:0 };
+    const feesPaid = (Number(s.gross)||0) * ((Number(s.feePct)||0)/100);
+    const net = (Number(s.gross)||0) - (Number(s.cogs)||0) - feesPaid - (Number(s.ship)||0);
+    const returns = Number(s.returnCharges)||0;
+    const adj = Number(s.adj)||0;
+    agg[key].units += 1;
+    agg[key].gross += Number(s.gross)||0;
+    agg[key].fees  += feesPaid;
+    agg[key].ship  += Number(s.ship)||0;
+    agg[key].adj   += adj;
+    agg[key].returns += returns;
+    agg[key].net   += net;
+    agg[key].adjNet += (net - adj - returns);
+  });
+  return agg;
+}
+function renderReportTable(tableSel, agg){
+  const rows = Object.entries(agg).sort((a,b)=> a[0] > b[0] ? 1 : -1).map(([period, v]) => `
+    <tr>
+      <td>${period}</td>
+      <td>${v.units}</td>
+      <td>$${fmt(v.gross)}</td>
+      <td>$${fmt(v.fees)}</td>
+      <td>$${fmt(v.ship)}</td>
+      <td>$${fmt(v.adj)}</td>
+      <td>$${fmt(v.returns)}</td>
+      <td>$${fmt(v.net)}</td>
+      <td>$${fmt(v.adjNet)}</td>
+    </tr>`).join('');
+  $(tableSel+' tbody').innerHTML = rows || `<tr><td colspan="9" class="muted">No sales yet</td></tr>`;
+}
+function renderExpenseReports(){
+  const byMonth = {};
+  expenses.forEach(e=>{
+    const d = e.date ? new Date(e.date) : new Date();
+    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    byMonth[k] = (byMonth[k]||0) + (Number(e.amt)||0);
+  });
+  const rowsM = Object.entries(byMonth).sort((a,b)=> a[0]>b[0]?1:-1).map(([k,v])=>`<tr><td>${k}</td><td class="right">$${fmt(v)}</td></tr>`).join('');
+  $('#rep-exp-month tbody').innerHTML = rowsM || `<tr><td colspan="2" class="muted">No expenses yet</td></tr>`;
+  const byType = {};
+  expenses.forEach(e=>{ byType[e.type||'Other'] = (byType[e.type||'Other']||0) + (Number(e.amt)||0); });
+  const rowsT = Object.entries(byType).sort((a,b)=> a[0]>b[0]?1:-1).map(([k,v])=>`<tr><td>${k}</td><td class="right">$${fmt(v)}</td></tr>`).join('');
+  $('#rep-exp-type tbody').innerHTML = rowsT || `<tr><td colspan="2" class="muted">No expenses yet</td></tr>`;
+  return {byMonth, byType};
+}
+function renderReports(){
+  renderReportTable('#rep-month', groupSales('month'));
+  renderReportTable('#rep-quarter', groupSales('quarter'));
+  renderReportTable('#rep-year', groupSales('year'));
+  renderExpenseReports();
+  updateKPIs();
+}
+
+// ---- KPI calculations ----
+function updateKPIs(){
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth();
+  let mtdAdjProfit = 0, ytdUnits = 0;
+  let soldUnits = sales.length;
+  let inventoryUnits = inventory.reduce((sum,i)=> sum + (Number(i.qty)||0), 0);
+  sales.forEach(s=>{
+    const d = s.dateSold ? new Date(s.dateSold) : new Date();
+    const feesPaid = (Number(s.gross)||0) * ((Number(s.feePct)||0)/100);
+    const net = (Number(s.gross)||0) - (Number(s.cogs)||0) - feesPaid - (Number(s.ship)||0);
+    const adjNet = net - (Number(s.adj)||0) - (Number(s.returnCharges)||0);
+    if(d.getFullYear() === curYear && d.getMonth() === curMonth) mtdAdjProfit += adjNet;
+    if(d.getFullYear() === curYear) ytdUnits += 1;
+  });
+  const st = (soldUnits + inventoryUnits) > 0 ? (soldUnits / (soldUnits + inventoryUnits)) * 100 : 0;
+
+  $('#kpi-mtd').className = 'kpi ' + (mtdAdjProfit >= 0 ? 'good' : 'bad');
+  $('#kpi-mtd-val').textContent = `$${fmt(mtdAdjProfit)}`;
+  $('#kpi-ytd').className = 'kpi good';
+  $('#kpi-ytd-val').textContent = ytdUnits;
+  const stRounded = Math.round(st);
+  $('#kpi-st').className = 'kpi ' + (stRounded >= 50 ? 'good' : 'mid');
+  $('#kpi-st-val').textContent = `${stRounded}%`;
+}
+
+// ---- UI Bindings ----
+function initDropdowns(){
+  $('#i-cat').innerHTML = settings.categories.map(c=>`<option>${c}</option>`).join('');
+  $('#i-act60').innerHTML = settings.actions.map(a=>`<option>${a}</option>`).join('');
+  $('#i-act120').innerHTML = settings.actions.map(a=>`<option>${a}</option>`).join('');
+  $('#i-act180').innerHTML = settings.actions.map(a=>`<option>${a}</option>`).join('');
+  $('#s-platform').innerHTML = settings.platforms.map(p=>`<option>${p}</option>`).join('');
+  $('#set-cats').value = settings.categories.join(', ');
+  $('#set-plats').value = settings.platforms.join(', ');
+  $('#set-acts').value = settings.actions.join(', ');
+}
+
+function renderInventory(){
+  const tb = $('#inv-table tbody'); tb.innerHTML = '';
+  inventory.forEach(item => {
+    const d = daysActive(item.dateListed);
+    const plan = `${item.action60||'None'} / ${item.action120||'None'} / ${item.action180||'None'}`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${item.desc}</td>
+      <td>${item.cat}</td>
+      <td>$${fmt(item.cogs)}</td>
+      <td>${item.dateListed||''}</td>
+      <td>${pillForDays(d)}</td>
+      <td>${item.qty}</td>
+      <td>${plan}</td>
+      <td class="right">
+        <button class="warn" data-sell="${item.id}">Sell</button>
+        <button class="danger" data-del="${item.id}">Delete</button>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+function renderSales(){
+  const tb = $('#sales-table tbody'); tb.innerHTML = '';
+  sales.forEach(s => {
+    const feesPaid = s.gross * (Number(s.feePct)||0) / 100;
+    const net = s.gross - s.cogs - feesPaid - s.ship;
+    const adjNet = net - (s.adj||0) - (s.returnCharges||0);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${s.desc}${s.returned && s.returnReason ? `<div class="muted">Return reason: ${s.returnReason}</div>`:''}</td>
+      <td>${s.platform}</td>
+      <td>$${fmt(s.gross)}</td>
+      <td>$${fmt(feesPaid)}</td>
+      <td>$${fmt(net)}</td>
+      <td>$${fmt((s.adj||0)+(s.returnCharges||0))}</td>
+      <td>$${fmt(adjNet)}</td>
+      <td class="right">
+        ${s.returned ? '<span class="pill age120">Returned</span>' : `<button class="warn" data-return="${s.id}">Mark Returned</button>`}
+        <button class="danger" data-rm-sale="${s.id}">Delete</button>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+function renderExpenses(){
+  const tb = $('#exp-table tbody'); tb.innerHTML = '';
+  expenses.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.date||''}</td><td>${e.type||''}</td><td>${e.desc||''}</td><td class="right">$${fmt(e.amt||0)}</td>`;
+    tb.appendChild(tr);
+  });
+}
+function renderMileage(){
+  const tb = $('#mile-table tbody'); tb.innerHTML = '';
+  mileage.forEach(m => {
+    const credit = (Number(m.miles)||0) * 0.65;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${m.date||''}</td><td>${m.purp||''}</td><td>${m.miles||0}</td><td class="right">$${fmt(credit)}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function loadAll(){ initDropdowns(); renderInventory(); renderSales(); renderExpenses(); renderMileage(); renderReports(); }
+
+// ---- Events ----
+$('#btn-add').onclick = () => {
+  const item = {
+    id: uid('inv'),
+    desc: $('#i-desc').value.trim(),
+    cat: $('#i-cat').value,
+    loc: $('#i-loc').value.trim(),
+    sku: $('#i-sku').value.trim(),
+    cogs: Number($('#i-cogs').value||0),
+    dateListed: $('#i-date').value || today(),
+    qty: Math.max(1, Number($('#i-qty').value||1)),
+    action60: $('#i-act60').value,
+    action120: $('#i-act120').value,
+    action180: $('#i-act180').value
+  };
+  if(!item.desc){ alert('Please enter an Item Description'); return; }
+  inventory.unshift(item); persist(); renderInventory(); updateKPIs();
+  ['#i-desc','#i-loc','#i-sku','#i-cogs','#i-date','#i-qty'].forEach(s=>$(s).value=''); 
+  ['#i-act60','#i-act120','#i-act180'].forEach(s=>$(s).value=settings.actions[0]||'None');
+};
+$('#btn-clear').onclick = () => { ['#i-desc','#i-loc','#i-sku','#i-cogs','#i-date','#i-qty'].forEach(s=>$(s).value='');  ['#i-act60','#i-act120','#i-act180'].forEach(s=>$(s).value=settings.actions[0]||'None'); };
+
+// Inventory CSV export
+$('#btn-exp-inv').onclick = ()=>{
+  const headers = ['id','desc','cat','loc','sku','cogs','dateListed','qty','action60','action120','action180','daysActive'];
+  const rows = inventory.map(i => ({
+    id:i.id, desc:i.desc, cat:i.cat, loc:i.loc||'', sku:i.sku||'', cogs:fmt(i.cogs),
+    dateListed:i.dateListed||'', qty:i.qty||0, action60:i.action60||'None', action120:i.action120||'None',
+    action180:i.action180||'None', daysActive: daysActive(i.dateListed)
+  }));
+  downloadFile('Inventory_Raw.csv', toCSV(rows, headers), 'text/csv;charset=utf-8;');
+};
+
+// Sales CSV export
+$('#btn-exp-sales').onclick = ()=>{
+  const headers = ['id','invId','desc','cat','cogs','dateListed','dateSold','platform','feePct','gross','ship','adj','returnCharges','returned','returnReason','net','adjustedNet'];
+  const rows = sales.map(s => {
+    const feesPaid = (Number(s.gross)||0) * ((Number(s.feePct)||0)/100);
+    const net = (Number(s.gross)||0) - (Number(s.cogs)||0) - feesPaid - (Number(s.ship)||0);
+    const adjNet = net - (Number(s.adj)||0) - (Number(s.returnCharges)||0);
+    return {
+      id:s.id, invId:s.invId||'', desc:s.desc, cat:s.cat||'', cogs:fmt(s.cogs||0), dateListed:s.dateListed||'',
+      dateSold:s.dateSold||'', platform:s.platform||'', feePct: (Number(s.feePct)||0).toFixed(2),
+      gross:fmt(s.gross||0), ship:fmt(s.ship||0), adj:fmt(s.adj||0), returnCharges:fmt(s.returnCharges||0),
+      returned: !!s.returned, returnReason:s.returnReason||'', net:fmt(net), adjustedNet:fmt(adjNet)
+    };
+  });
+  downloadFile('Sales_Raw.csv', toCSV(rows, headers), 'text/csv;charset=utf-8;');
+};
+
+// Inventory table buttons
+$('#inv-table').onclick = (e) => {
+  const sellId = e.target.getAttribute('data-sell');
+  const delId = e.target.getAttribute('data-del');
+  if(sellId){
+    const item = inventory.find(x=>x.id===sellId);
+    if(!item) return;
+    const platform = prompt('Platform? (e.g., eBay, Mercari)', settings.platforms[0]||'eBay') || 'eBay';
+    const feePct = Number(prompt('Approx. Fees %?', '12.9') || '12.9');
+    const gross = Number(prompt('Gross Sale $ (total paid by buyer)', '0') || 0);
+    const ship = Number(prompt('Your Shipping Cost $ (0 if buyer paid shipping)', '0') || 0);
+    const adj = Number(prompt('Adjustments $ (partial refund/discount, 0 if none)', '0') || 0);
+    const sale = {
+      id: uid('sale'),
+      invId: item.id,
+      desc: item.desc,
+      cat: item.cat,
+      cogs: item.cogs,
+      dateListed: item.dateListed,
+      dateSold: today(),
+      platform, feePct, gross, ship, adj,
+      returnCharges: 0,
+      returned: false,
+      returnReason: ''
+    };
+    sales.unshift(sale);
+    item.qty -= 1;
+    if(item.qty <= 0){
+      inventory = inventory.filter(x=>x.id!==item.id);
+    }
+    persist(); renderInventory(); renderSales(); renderReports();
+  }
+  if(delId){
+    if(confirm('Delete this inventory item?')){
+      inventory = inventory.filter(x=>x.id!==delId); persist(); renderInventory(); updateKPIs();
+    }
+  }
+};
+
+// Manual sale add
+$('#btn-manual-sale').onclick = () => {
+  const platform = $('#s-platform').value;
+  const feePct = Number($('#s-fee').value || 0);
+  const gross = Number($('#s-gross').value || 0);
+  const ship = Number($('#s-ship').value || 0);
+  const adj = Number($('#s-adj').value || 0);
+  const ret = Number($('#s-ret').value || 0);
+  const desc = prompt('Item Description for manual sale:');
+  const cogs = Number(prompt('Cost of Goods for this item:', '0') || 0);
+  if(!desc){ alert('Description required'); return; }
+  sales.unshift({ id: uid('sale'), invId:null, desc, cat:'', cogs, dateListed:'', dateSold:today(),
+                  platform, feePct, gross, ship, adj, returnCharges:ret, returned:false, returnReason:'' });
+  persist(); renderSales(); renderReports();
+};
+
+// Sales table buttons
+$('#sales-table').onclick = (e) => {
+  const retId = e.target.getAttribute('data-return');
+  const rmId = e.target.getAttribute('data-rm-sale');
+  if(retId){
+    const sale = sales.find(s=>s.id===retId);
+    if(!sale) return;
+    const returnCost = Number(prompt('Return shipping/charges $ (0 if none):', '0') || 0);
+    const reason = prompt("Return reason (e.g., Didn't fit, Damaged, Changed mind):", "") || "";
+    sale.returned = true;
+    sale.returnCharges = returnCost;
+    sale.returnReason = reason;
+    if(sale.invId){
+      const existing = inventory.find(i=>i.id===sale.invId);
+      if(existing){ existing.qty += 1; }
+      else {
+        inventory.unshift({
+          id: sale.invId,
+          desc: sale.desc,
+          cat: sale.cat,
+          loc: '',
+          cogs: sale.cogs,
+          dateListed: sale.dateListed || today(),
+          qty: 1,
+          action60: settings.actions[0]||'None',
+          action120: settings.actions[0]||'None',
+          action180: settings.actions[0]||'None'
+        });
+      }
+    } else {
+      inventory.unshift({
+        id: uid('inv'),
+        desc: sale.desc,
+        cat: sale.cat || 'Other',
+        loc: '',
+        cogs: sale.cogs,
+        dateListed: today(),
+        qty: 1,
+        action60: settings.actions[0]||'None',
+        action120: settings.actions[0]||'None',
+        action180: settings.actions[0]||'None'
+      });
+    }
+    persist(); renderInventory(); renderSales(); renderReports();
+  }
+  if(rmId){
+    if(confirm('Delete this sale record?')){
+      sales = sales.filter(s=>s.id!==rmId); persist(); renderSales(); renderReports();
+    }
+  }
+};
+
+// Expenses
+$('#btn-exp').onclick = () => {
+  expenses.unshift({ date: $('#e-date').value||today(), type: $('#e-type').value,
+                     desc: $('#e-desc').value.trim(), amt: Number($('#e-amt').value||0) });
+  persist(); renderExpenses(); renderReports();
+  ['#e-date','#e-desc','#e-amt'].forEach(s=>$(s).value='');
+};
+
+// Mileage
+$('#btn-mile').onclick = () => {
+  mileage.unshift({ date: $('#m-date').value||today(), purp: $('#m-purp').value.trim(), miles: Number($('#m-miles').value||0) });
+  persist(); renderMileage();
+  ['#m-date','#m-purp','#m-miles'].forEach(s=>$(s).value='');
+};
+
+// Tabs
+function setTab(id){
+  const map = { 'inv': '#inv-view', 'sales': '#sales-view', 'exp':'#exp-view', 'mile':'#mile-view', 'reports':'#reports-view', 'settings':'#settings-view' };
+  Object.values(map).forEach(sel => $(sel).style.display='none');
+  $(map[id]).style.display = 'block';
+}
+function setActiveTab(btn){
+  ['#tab-inv','#tab-sales','#tab-exp','#tab-mile','#tab-reports','#tab-settings'].forEach(s=>$(s).classList.remove('active'));
+  $(btn).classList.add('active');
+}
+$('#tab-inv').onclick = ()=>{ setActiveTab('#tab-inv'); setTab('inv'); };
+$('#tab-sales').onclick = ()=>{ setActiveTab('#tab-sales'); setTab('sales'); };
+$('#tab-exp').onclick = ()=>{ setActiveTab('#tab-exp'); setTab('exp'); };
+$('#tab-mile').onclick = ()=>{ setActiveTab('#tab-mile'); setTab('mile'); };
+$('#tab-reports').onclick = ()=>{ setActiveTab('#tab-reports'); setTab('reports'); renderReports(); };
+$('#tab-settings').onclick = ()=>{ setActiveTab('#tab-settings'); setTab('settings'); };
+
+// Settings save
+$('#btn-save-settings').onclick = ()=>{
+  settings.categories = $('#set-cats').value.split(',').map(s=>s.trim()).filter(Boolean);
+  settings.platforms = $('#set-plats').value.split(',').map(s=>s.trim()).filter(Boolean);
+  settings.actions = $('#set-acts').value.split(',').map(s=>s.trim()).filter(Boolean);
+  persist(); initDropdowns(); renderInventory();
+  alert('Settings saved.');
+};
+
+// ---- eBay CSV Import ----
+function normalizeHeader(h){
+  return h.trim().toLowerCase()
+    .replace(/\\(.*?\\)/g,'')
+    .replace(/[^a-z0-9]+/g,' ')
+    .trim();
+}
+function importEbayCSV(text){
+  const data = parseCSV(text);
+  if(!data || data.length < 2){ alert('CSV appears empty.'); return; }
+  const headers = data[0].map(normalizeHeader);
+  const rows = data.slice(1);
+  const idx = {
+    title: headers.findIndex(h=> ['item title','title','item','name'].includes(h)),
+    sku: headers.findIndex(h=> ['custom label sku','custom label','sku','label'].includes(h)),
+    qty: headers.findIndex(h=> ['quantity available','quantity','qty'].includes(h)),
+    start: headers.findIndex(h=> ['start date','start time','start','date listed','listed'].includes(h)),
+    category: headers.findIndex(h=> ['category','cat'].includes(h))
+  };
+  let imported = 0;
+  rows.forEach(r => {
+    const desc = (idx.title>=0 ? r[idx.title] : '').trim();
+    if(!desc) return;
+    const sku = (idx.sku>=0 ? r[idx.sku] : '').trim();
+    const qty = Number((idx.qty>=0 ? r[idx.qty] : '1')) || 1;
+    const dateListedRaw = (idx.start>=0 ? r[idx.start] : '').trim();
+    let dateListed = dateListedRaw ? new Date(dateListedRaw) : null;
+    const dateStr = (dateListed && !isNaN(dateListed.getTime())) ? dateListed.toISOString().slice(0,10) : today();
+    const cat = (idx.category>=0 ? r[idx.category] : 'Other') || 'Other';
+    let existing = null;
+    if(sku) existing = inventory.find(i=> (i.sku||'').toLowerCase() === sku.toLowerCase());
+    if(!existing) existing = inventory.find(i=> i.desc.toLowerCase() === desc.toLowerCase());
+    if(existing){
+      existing.qty = (Number(existing.qty)||0) + qty;
+      if(!existing.dateListed) existing.dateListed = dateStr;
+      if(cat && (!existing.cat || existing.cat === 'Other')) existing.cat = cat;
+      if(sku) existing.sku = sku;
+    }else{
+      inventory.push({
+        id: uid('inv'),
+        desc, sku,
+        cat, loc:'', cogs:0,
+        dateListed: dateStr, qty,
+        action60: settings.actions[0]||'None',
+        action120: settings.actions[0]||'None',
+        action180: settings.actions[0]||'None'
+      });
+    }
+    imported++;
+  });
+  persist(); renderInventory(); updateKPIs();
+  alert(`Imported or updated ${imported} listing(s) from CSV.`);
+}
+$('#btn-import-ebay').onclick = ()=>{
+  const f = $('#ebayCsv').files[0];
+  if(!f){ alert('Choose a CSV file first.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => importEbayCSV(e.target.result);
+  reader.readAsText(f);
+};
+
+// ---- Backup / Restore JSON ----
+function exportAllJSON(){
+  const payload = { version: 1, exportedAt: new Date().toISOString(), settings, inventory, sales, expenses, mileage };
+  const pretty = JSON.stringify(payload, null, 2);
+  const yyyy = new Date().toISOString().slice(0,10);
+  downloadFile(`InventoryData_${yyyy}.json`, pretty, 'application/json');
+  LS.set('lastBackupHint', new Date().toISOString());
+  $('#backup-note').textContent = 'Backup created. Keep this file safe.';
+}
+function replaceWithJSON(obj){
+  if(!obj) return;
+  settings = obj.settings || settings;
+  inventory = Array.isArray(obj.inventory) ? obj.inventory : inventory;
+  sales = Array.isArray(obj.sales) ? obj.sales : sales;
+  expenses = Array.isArray(obj.expenses) ? obj.expenses : expenses;
+  mileage = Array.isArray(obj.mileage) ? obj.mileage : mileage;
+  if(!settings.actions) settings.actions = ["None","Price Drop","Promote Listing","Relist","End Listings"];
+  inventory.forEach(i=>{ i.action60=i.action60||'None'; i.action120=i.action120||'None'; i.action180=i.action180||'None'; i.qty = Number(i.qty)||1; });
+  persist(); loadAll();
+}
+function mergeFromJSON(obj){
+  if(!obj) return;
+  const mergeUnique = (a,b)=> Array.from(new Set([...(a||[]), ...(b||[])]));
+  if(obj.settings){
+    settings.categories = mergeUnique(settings.categories, obj.settings.categories||[]);
+    settings.platforms = mergeUnique(settings.platforms, obj.settings.platforms||[]);
+    settings.actions = mergeUnique(settings.actions, obj.settings.actions||[]);
+  }
+  (obj.inventory||[]).forEach(inItem=>{
+    let t = inventory.find(x=>x.id===inItem.id) ||
+            (inItem.sku && inventory.find(x=> (x.sku||'').toLowerCase()===inItem.sku.toLowerCase())) ||
+            inventory.find(x=> x.desc && inItem.desc && x.desc.toLowerCase()===inItem.desc.toLowerCase());
+    if(t){
+      t.qty = (Number(t.qty)||0) + (Number(inItem.qty)||0);
+      if(!t.dateListed && inItem.dateListed) t.dateListed = inItem.dateListed;
+      if((!t.cat || t.cat==='Other') && inItem.cat) t.cat = inItem.cat;
+      if(inItem.sku) t.sku = inItem.sku;
+    } else {
+      inventory.push(inItem);
+    }
+  });
+  function dedupe(arr){
+    const seen = new Set(); const res=[];
+    arr.forEach(x=>{ const k = x.id || JSON.stringify(x); if(!seen.has(k)){ seen.add(k); res.push(x); } });
+    return res;
+  }
+  sales = dedupe([...sales, ...(obj.sales||[])]);
+  expenses = dedupe([...expenses, ...(obj.expenses||[])]);
+  mileage = dedupe([...mileage, ...(obj.mileage||[])]);
+  if(!settings.actions) settings.actions = ["None","Price Drop","Promote Listing","Relist","End Listings"];
+  inventory.forEach(i=>{ i.action60=i.action60||'None'; i.action120=i.action120||'None'; i.action180=i.action180||'None'; i.qty = Number(i.qty)||1; });
+  persist(); loadAll();
+}
+$('#btn-export-json').onclick = exportAllJSON;
+function readJSONFile(cb){
+  const f = $('#dataJson').files[0];
+  if(!f){ alert('Choose a JSON file first.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{ cb(JSON.parse(e.target.result)); }
+    catch(err){ alert('Invalid JSON file.'); }
+  };
+  reader.readAsText(f);
+}
+$('#btn-import-json').onclick = ()=>{
+  if(!confirm('This will REPLACE your current data. Continue?')) return;
+  readJSONFile(replaceWithJSON);
+};
+$('#btn-merge-json').onclick = ()=> readJSONFile(mergeFromJSON);
+
+// ---- Barcode Scanner ----
+let scanStream = null, scanTimer = null, detector = null;
+async function startScan(){
+  $('#scan-modal').style.display = 'flex';
+  try{
+    // Camera
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio:false });
+    const video = $('#scan-video');
+    video.srcObject = scanStream;
+    await video.play();
+
+    // BarcodeDetector if available
+    if ('BarcodeDetector' in window){
+      const formats = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'];
+      detector = new window.BarcodeDetector({ formats });
+      $('#scan-status').textContent = 'Scanning…';
+      const tick = async()=>{
+        if(!video.srcObject) return;
+        try{
+          const codes = await detector.detect(video);
+          if(codes && codes.length){
+            const code = codes[0].rawValue;
+            handleScanResult(code);
+            stopScan();
+            return;
+          }
+        }catch(err){ console.warn('detect() failed', err); }
+        scanTimer = requestAnimationFrame(tick);
+      };
+      scanTimer = requestAnimationFrame(tick);
+    } else {
+      $('#scan-status').textContent = 'This browser lacks BarcodeDetector. Enter code manually.';
+      const manual = prompt('Enter/scan code:');
+      if(manual){ handleScanResult(manual.trim()); }
+      stopScan();
+    }
+  }catch(err){
+    $('#scan-status').textContent = 'Camera access failed. You can enter code manually.';
+    const manual = prompt('Enter/scan code:');
+    if(manual){ handleScanResult(manual.trim()); }
+    stopScan();
+  }
+}
+function stopScan(){
+  $('#scan-modal').style.display = 'none';
+  const video = $('#scan-video');
+  if(scanTimer){ cancelAnimationFrame(scanTimer); scanTimer = null; }
+  if(video){ video.pause(); video.srcObject = null; }
+  if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream = null; }
+}
+function handleScanResult(code){
+  $('#i-sku').value = code;
+  // Try to find existing item
+  const item = inventory.find(i => (i.sku||'').toLowerCase() === code.toLowerCase());
+  if(item){
+    // highlight row
+    const rows = Array.from($('#inv-table tbody').children);
+    const idx = inventory.indexOf(item);
+    const tr = rows[idx];
+    if(tr){
+      tr.classList.add('highlight');
+      tr.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(()=> tr.classList.remove('highlight'), 1500);
+    }
+  } else {
+    // focus title field to create new
+    $('#i-desc').focus();
+  }
+}
+$('#btn-scan').onclick = startScan;
+$('#btn-scan-stop').onclick = stopScan;
+
+// ---- Export CSV buttons (Reports) ----
+function aggToRows(agg){
+  return Object.entries(agg).sort((a,b)=> a[0] > b[0] ? 1 : -1).map(([period,v]) => ({
+    Period: period,
+    Units: v.units,
+    Gross: v.gross.toFixed(2),
+    Fees: v.fees.toFixed(2),
+    Shipping: v.ship.toFixed(2),
+    Adjustments: v.adj.toFixed(2),
+    Returns: v.returns.toFixed(2),
+    Net: v.net.toFixed(2),
+    AdjustedNet: v.adjNet.toFixed(2)
+  }));
+}
+$('#btn-exp-month').onclick = ()=>{
+  const rows = aggToRows(groupSales('month'));
+  const csv = toCSV(rows, ['Period','Units','Gross','Fees','Shipping','Adjustments','Returns','Net','AdjustedNet']);
+  downloadFile('Monthly_Sales.csv', csv, 'text/csv;charset=utf-8;');
+};
+$('#btn-exp-quarter').onclick = ()=>{
+  const rows = aggToRows(groupSales('quarter'));
+  const csv = toCSV(rows, ['Period','Units','Gross','Fees','Shipping','Adjustments','Returns','Net','AdjustedNet']);
+  downloadFile('Quarterly_Sales.csv', csv, 'text/csv;charset=utf-8;');
+};
+$('#btn-exp-year').onclick = ()=>{
+  const rows = aggToRows(groupSales('year'));
+  const csv = toCSV(rows, ['Period','Units','Gross','Fees','Shipping','Adjustments','Returns','Net','AdjustedNet']);
+  downloadFile('Annual_Sales.csv', csv, 'text/csv;charset=utf-8;');
+};
+$('#btn-exp-exp-month').onclick = ()=>{
+  const {byMonth} = renderExpenseReports();
+  const rows = Object.entries(byMonth).sort((a,b)=> a[0] > b[0] ? 1 : -1).map(([period, amount]) => ({Period: period, Amount: amount.toFixed(2)}));
+  const csv = toCSV(rows, ['Period','Amount']);
+  downloadFile('Expenses_By_Month.csv', csv, 'text/csv;charset=utf-8;');
+};
+$('#btn-exp-exp-type').onclick = ()=>{
+  const {byType} = renderExpenseReports();
+  const rows = Object.entries(byType).sort((a,b)=> a[0] > b[0] ? 1 : -1).map(([type, amount]) => ({Type: type, Amount: amount.toFixed(2)}));
+  const csv = toCSV(rows, ['Type','Amount']);
+  downloadFile('Expenses_By_Type.csv', csv, 'text/csv;charset=utf-8;');
+};
+
+// ---- PWA Registration ----
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = $('#btn-install');
+  btn.style.display = 'inline-block';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    btn.style.display = 'none';
+  };
+});
+
+if ('serviceWorker' in navigator && window.isSecureContext){
+  navigator.serviceWorker.register('service-worker.js').catch(err=>{
+    console.warn('SW registration failed', err);
+  });
+}
+
+// init
+(function(){
+  if(inventory.length===0){
+    inventory.push({ id: uid('inv'), desc:"Cole Haan Grand Motion Gray Woven Stitchlite Casual Shoes C28433 Men's 13",
+      cat:'Shoes', loc:'BIN S3', sku:'CH-C28433-13', cogs:7.66, dateListed: today(), qty:1, action60:'None', action120:'None', action180:'None' });
+  }else{
+    inventory.forEach(i=>{
+      i.action60 = i.action60 || 'None'; i.action120 = i.action120 || 'None'; i.action180 = i.action180 || 'None';
+    });
+  }
+  if(!settings.actions){ settings.actions = ["None","Price Drop","Promote Listing","Relist","End Listings"]; }
+  loadAll();
+})();
+</script>
+</body>
+</html>
